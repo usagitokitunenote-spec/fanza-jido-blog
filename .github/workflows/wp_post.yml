@@ -15,27 +15,33 @@ on:
         description: "draft or publish"
         required: true
         default: "publish"
+
   schedule:
-    - cron: "0 * * * *" # 毎時0分（必要なら変更）
+    - cron: "0 * * * *" # 毎時0分
 
 jobs:
   run:
     runs-on: ubuntu-latest
     env:
+      # WordPress
       WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
       WP_USER: ${{ secrets.WP_USER }}
       WP_APP_PASS: ${{ secrets.WP_APP_PASS }}
-      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
 
+      # Google Sheets
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
       SHEET_NAME: "シート4"
+
+      # 投稿制御
       MAX_TAGS: "10"
       RANDOM_PICK: "1"
 
-      POST_LIMIT: ${{ github.event.inputs.post_limit || '100' }}
-      MODE: ${{ github.event.inputs.mode || 'update' }}
-      WP_STATUS: ${{ github.event.inputs.wp_status || 'draft' }}
+      # ========= 重要：cronでもpublishさせる =========
+      POST_LIMIT: ${{ github.event_name == 'schedule' && '100' || github.event.inputs.post_limit || '100' }}
+      MODE: ${{ github.event_name == 'schedule' && 'skip' || github.event.inputs.mode || 'skip' }}
+      WP_STATUS: ${{ github.event_name == 'schedule' && 'publish' || github.event.inputs.wp_status || 'publish' }}
 
-      # 既存投稿のアイキャッチを毎回更新したいなら 1（通常は0のまま）
+      # 既存投稿のアイキャッチを毎回更新したいなら 1
       FORCE_FEATURED: "0"
 
     steps:
