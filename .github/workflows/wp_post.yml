@@ -11,6 +11,10 @@ on:
         description: "skip (no update) or update (update existing posts)"
         required: true
         default: "update"
+      wp_status:
+        description: "draft or publish"
+        required: true
+        default: "draft"
   schedule:
     - cron: "0 * * * *" # 毎時0分（必要なら変更）
 
@@ -23,9 +27,15 @@ jobs:
       WP_APP_PASS: ${{ secrets.WP_APP_PASS }}
       GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
 
-      # 手動実行なら入力値、定期実行ならデフォルト（例：100）
+      SHEET_NAME: "シート4"
+      MAX_TAGS: "10"
+
       POST_LIMIT: ${{ github.event.inputs.post_limit || '100' }}
       MODE: ${{ github.event.inputs.mode || 'update' }}
+      WP_STATUS: ${{ github.event.inputs.wp_status || 'draft' }}
+
+      # 既存投稿のアイキャッチを毎回更新したいなら 1（通常は0のまま）
+      FORCE_FEATURED: "0"
 
     steps:
       - name: Checkout
