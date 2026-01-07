@@ -1,39 +1,75 @@
 import fetch from "node-fetch";
+import { buildPostHtml } from "./template.js";
 
-function mustEnv(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
+/* ===== 環境変数 ===== */
+const WP_BASE_URL = process.env.WP_BASE_URL.replace(/\/$/, "");
+const WP_USER = process.env.WP_USER;
+const WP_APP_PASS = process.env.WP_APP_PASS;
+const POST_LIMIT = Number(process.env.POST_LIMIT || 1);
 
-const WP_BASE_URL = mustEnv("WP_BASE_URL").replace(/\/$/, "");
-const WP_USER = mustEnv("WP_USER");
-const WP_APP_PASS = mustEnv("WP_APP_PASS"); // 空白そのままでOK
-const POST_LIMIT = Number(process.env.POST_LIMIT || 20);
-
+/* ===== 認証 ===== */
 const auth = Buffer.from(`${WP_USER}:${WP_APP_PASS}`).toString("base64");
 
-async function wp(path) {
+/* ===== WP API ===== */
+async function wp(path, options = {}) {
   const res = await fetch(`${WP_BASE_URL}${path}`, {
+    ...options,
     headers: {
-      Authorization: `Basic ${auth}`
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json"
     }
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`WP error ${res.status}: ${text}`);
-  return JSON.parse(text);
+  if (!res.ok) throw new Error(text);
+  return text ? JSON.parse(text) : null;
 }
 
+/* ===== ダミーデータ（最初はここ） =====
+   ※ 次のステップでスプレッドシートに置き換える */
+const dummyRows = [
+  {
+    content_id: "TEST-001",
+    title: "テスト投稿（自動生成）",
+    release_date: "2024-01-01",
+    genres: "テスト, 自動投稿",
+    jacket_image: "https://via.placeholder.com/600x400.png?text=TEST",
+    dmm_affiliate_url: "https://example.com"
+  }
+];
+
+/* ===== メイン ===== */
 async function main() {
-  console.log("=== WP Connection Test ===");
-  console.log("Base:", WP_BASE_URL);
-  console.log("Limit:", POST_LIMIT);
+  console.log("POST_LIMIT =", POST_LIMIT);
 
-  const posts = await wp("/wp-json/wp/v2/posts?per_page=1");
-  console.log("Connected OK. Posts length:", posts.length);
+  const rows = dummyRows.slice(0, POST_LIMIT);
+
+  for (const row of rows) {
+    const slug = row.content_id.toLowerCase();
+
+    // 既存投稿チェック
+    const exist = await wp(`/wp-json/wp/v2/posts?slug=${slug}`);
+    if (exist.length > 0) {
+      console.log("Skip existing:", slug);
+      continue;
+    }
+
+    const html = buildPostHtml(row);
+
+    const post = await wp("/wp-json/wp/v2/posts", {
+      method: "POST",
+      body: JSON.stringify({
+        title: `${row.content_id} ${row.title}`,
+        slug,
+        status: "publish",
+        content: html
+      })
+    });
+
+    console.log("Posted:", post.id);
+  }
 }
 
-main().catch(err => {
-  console.error(err);
+main().catch(e => {
+  console.error(e);
   process.exit(1);
 });
