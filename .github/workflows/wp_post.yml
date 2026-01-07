@@ -1,0 +1,43 @@
+name: Auto Post to WordPress
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_limit:
+        description: "How many posts to process this run (e.g. 20, 2000)"
+        required: true
+        default: "20"
+      mode:
+        description: "skip (no update) or update (update existing posts)"
+        required: true
+        default: "update"
+  schedule:
+    - cron: "0 * * * *" # 毎時0分（必要なら変更）
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+      WP_USER: ${{ secrets.WP_USER }}
+      WP_APP_PASS: ${{ secrets.WP_APP_PASS }}
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+
+      # 手動実行なら入力値、定期実行ならデフォルト（例：100）
+      POST_LIMIT: ${{ github.event.inputs.post_limit || '100' }}
+      MODE: ${{ github.event.inputs.mode || 'update' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run posting script
+        run: node scripts/post-to-wp.js
