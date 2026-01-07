@@ -302,7 +302,7 @@ async function main() {
     }
 
     const payload = {
-      title: `${contentId} ${title}`,
+      title: `【${row.maker_code}】 ${row.title}`,
       slug,
       status: WP_STATUS,
       content: html,
