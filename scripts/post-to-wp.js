@@ -18,12 +18,10 @@ const GOOGLE_SHEET_ID = mustEnv("GOOGLE_SHEET_ID");
 
 const SHEET_NAME = process.env.SHEET_NAME || "シート4";
 const POST_LIMIT = Number(process.env.POST_LIMIT || 20);
-const MODE = (process.env.MODE || "update").toLowerCase(); // update | skip
-const WP_STATUS = (process.env.WP_STATUS || "draft").toLowerCase(); // draft | publish
+const MODE = (process.env.MODE || "skip").toLowerCase(); // skip 固定推奨
+const WP_STATUS = (process.env.WP_STATUS || "draft").toLowerCase();
 const MAX_TAGS = Number(process.env.MAX_TAGS || 10);
-
-// 更新時にアイキャッチを強制更新したい場合だけ 1
-const FORCE_FEATURED = (process.env.FORCE_FEATURED || "0") === "1";
+const RANDOM_PICK = (process.env.RANDOM_PICK || "1") === "1";
 
 /* ======================
    WP REST helpers
@@ -48,8 +46,7 @@ function normalizeSlug(s) {
 }
 
 /* ======================
-   Sheet fetch (CSV via gviz)
-   ※シートが「リンク閲覧可」になっている必要あり
+   Sheet fetch
 ====================== */
 async function fetchSheetRows() {
   const url =
@@ -58,20 +55,15 @@ async function fetchSheetRows() {
 
   const res = await fetch(url);
   const text = await res.text();
-  if (!res.ok) throw new Error(`Sheet fetch failed ${res.status}: ${text.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`Sheet fetch failed ${res.status}`);
 
-  const records = parse(text, {
-    columns: true,
-    skip_empty_lines: true,
-  });
-
-  return records;
+  return parse(text, { columns: true, skip_empty_lines: true });
 }
 
 /* ======================
-   Taxonomy / tag helpers
+   Taxonomy helpers
 ====================== */
-const termCache = new Map(); // key: `${tax}|${name}` => id
+const termCache = new Map();
 
 async function upsertTerm(taxonomy, name) {
   const n = String(name || "").trim();
@@ -80,7 +72,6 @@ async function upsertTerm(taxonomy, name) {
   const key = `${taxonomy}|${n}`;
   if (termCache.has(key)) return termCache.get(key);
 
-  // slug指定したい場合はここで追加も可能（今はWP任せ）
   const found = await wp(`/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(n)}&per_page=100`);
   const exact = (found || []).find(t => String(t.name).trim() === n);
   if (exact) {
@@ -93,6 +84,7 @@ async function upsertTerm(taxonomy, name) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: n }),
   });
+
   termCache.set(key, created.id);
   return created.id;
 }
@@ -104,111 +96,63 @@ function splitCsv(v) {
 }
 
 /* ======================
-   “ざっくりタグ” allowlist
-   genres/relatedWords を全部タグ化しない（汚くなるため）
+   WP tags（ざっくり）
 ====================== */
 const TAG_ALLOWLIST = new Map([
-  // 属性
-  ["jk", "JK"], ["女子校生", "JK"], ["女子校生・JK", "JK"],
+  ["jk", "JK"], ["女子校生", "JK"],
   ["jd", "JD"], ["女子大生", "JD"],
-  ["素人", "素人"], ["人妻", "人妻"], ["主婦", "主婦"], ["ol", "OL"], ["OL", "OL"],
-
-  // プレイ系
-  ["フェラ", "フェラ"], ["フェラチオ", "フェラ"],
-  ["足コキ", "足コキ"], ["手コキ", "手コキ"], ["パイズリ", "パイズリ"],
-  ["中出し", "中出し"], ["顔射", "顔射"], ["口内射精", "口内射精"],
-
-  // シチュ系（必要なら増やす）
-  ["ナンパ", "ナンパ"], ["盗撮", "盗撮"], ["逆ナン", "逆ナン"], ["ハーレム", "ハーレム"],
+  ["素人", "素人"], ["人妻", "人妻"], ["ol", "OL"], ["OL", "OL"],
+  ["フェラ", "フェラ"], ["中出し", "中出し"], ["足コキ", "足コキ"],
 ]);
 
 function buildPostTags(row) {
-  // 入力は genres を中心に。relatedWords列が将来増えたらここに足す。
   const raw = splitCsv(row.genres);
   const out = [];
   const seen = new Set();
 
   for (const g of raw) {
-    const key = g.trim();
-    if (!key) continue;
-
-    // allowlistに合うものだけ採用
-    const mapped =
-      TAG_ALLOWLIST.get(key) ||
-      TAG_ALLOWLIST.get(key.toLowerCase()) ||
-      null;
-
-    if (!mapped) continue;
-
-    if (!seen.has(mapped)) {
-      seen.add(mapped);
-      out.push(mapped);
-    }
+    const m = TAG_ALLOWLIST.get(g) || TAG_ALLOWLIST.get(g.toLowerCase());
+    if (!m || seen.has(m)) continue;
+    seen.add(m);
+    out.push(m);
     if (out.length >= MAX_TAGS) break;
   }
   return out;
 }
 
 async function upsertWpTag(name) {
-  // WP標準タグは /tags
   const n = String(name || "").trim();
   if (!n) return null;
 
-  const key = `post_tag|${n}`;
-  if (termCache.has(key)) return termCache.get(key);
-
   const found = await wp(`/wp-json/wp/v2/tags?search=${encodeURIComponent(n)}&per_page=100`);
   const exact = (found || []).find(t => String(t.name).trim() === n);
-  if (exact) {
-    termCache.set(key, exact.id);
-    return exact.id;
-  }
+  if (exact) return exact.id;
 
   const created = await wp(`/wp-json/wp/v2/tags`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: n }),
   });
-  termCache.set(key, created.id);
   return created.id;
 }
 
 /* ======================
-   Featured image upload
+   Featured image
 ====================== */
-function guessContentType(url) {
-  const u = String(url || "").toLowerCase();
-  if (u.endsWith(".png")) return "image/png";
-  if (u.endsWith(".webp")) return "image/webp";
-  if (u.endsWith(".gif")) return "image/gif";
-  return "image/jpeg";
-}
-
 async function uploadFeaturedImage(jacketUrl, filenameBase) {
-  const url = String(jacketUrl || "").trim();
-  if (!url) return null;
+  const imgRes = await fetch(jacketUrl);
+  if (!imgRes.ok) return null;
 
-  const imgRes = await fetch(url);
-  if (!imgRes.ok) throw new Error(`Image download failed ${imgRes.status}: ${url}`);
   const buf = Buffer.from(await imgRes.arrayBuffer());
-
-  const contentType = guessContentType(url);
-  const ext = contentType === "image/png" ? "png"
-    : contentType === "image/webp" ? "webp"
-    : contentType === "image/gif" ? "gif"
-    : "jpg";
-  const filename = `${filenameBase}.${ext}`;
-
   const media = await wp(`/wp-json/wp/v2/media`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${filenameBase}.jpg"`,
+      "Content-Type": "image/jpeg",
     },
     body: buf,
   });
-
   return media?.id ?? null;
 }
 
@@ -216,35 +160,44 @@ async function uploadFeaturedImage(jacketUrl, filenameBase) {
    Main
 ====================== */
 async function main() {
-  console.log("SHEET_NAME:", SHEET_NAME);
-  console.log("POST_LIMIT:", POST_LIMIT, "MODE:", MODE, "WP_STATUS:", WP_STATUS);
-
   const rows = await fetchSheetRows();
 
-  // 対象：api_statusがOK、content_idあり、アフィURLあり
-  const targets = rows
+  // 対象抽出
+  let candidates = rows
     .filter(r => String(r.api_status || "").startsWith("OK"))
     .filter(r => String(r.content_id || "").trim())
-    .filter(r => String(r.dmm_affiliate_url || "").trim())
-    .slice(0, POST_LIMIT);
+    .filter(r => String(r.dmm_affiliate_url || "").trim());
 
-  console.log("Targets:", targets.length);
+  // ランダム化
+  if (RANDOM_PICK) {
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+  }
 
-  for (const row of targets) {
-    const contentId = String(row.content_id).trim();
-    const title = String(row.title || "").trim();
-    const slug = normalizeSlug(contentId);
+  let createdCount = 0;
 
-    // 既存判定（slug=content_id）
+  for (const row of candidates) {
+    if (createdCount >= POST_LIMIT) break;
+
+    const slug = normalizeSlug(row.content_id);
+
+    // 🔒 重複チェック（既存は完全スキップ）
     const exist = await wp(`/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&per_page=1`);
-    const existingPost = (exist && exist.length) ? exist[0] : null;
-
-    if (existingPost && MODE === "skip") {
+    if (exist && exist.length) {
       console.log("Skip existing:", slug);
       continue;
     }
 
-    // タクソノミーIDを用意
+    // genre（ジャンル）
+    const genreIds = [];
+    for (const g of splitCsv(row.genres)) {
+      const id = await upsertTerm("genre", g);
+      if (id) genreIds.push(id);
+    }
+
+    // 他タクソノミー
     const actressIds = [];
     for (const a of splitCsv(row.actresses)) {
       const id = await upsertTerm("actress", a);
@@ -257,90 +210,58 @@ async function main() {
       if (id) directorIds.push(id);
     }
 
-    const makerIds = [];
-    if (String(row.maker || "").trim()) {
-      const id = await upsertTerm("maker", row.maker);
-      if (id) makerIds.push(id);
-    }
-
-    const labelIds = [];
-    if (String(row.label || "").trim()) {
-      const id = await upsertTerm("label", row.label);
-      if (id) labelIds.push(id);
-    }
+    const makerIds = row.maker ? [await upsertTerm("maker", row.maker)] : [];
+    const labelIds = row.label ? [await upsertTerm("label", row.label)] : [];
 
     const seriesIds = [];
-    const series = String(row.series || "").trim();
-    if (series && series !== "----") {
-      const id = await upsertTerm("series", series);
+    if (row.series && row.series !== "----") {
+      const id = await upsertTerm("series", row.series);
       if (id) seriesIds.push(id);
     }
 
-    // 標準タグ（allowlist）
-    const tagNames = buildPostTags(row);
+    // WP標準タグ
     const tagIds = [];
-    for (const t of tagNames) {
+    for (const t of buildPostTags(row)) {
       const id = await upsertWpTag(t);
       if (id) tagIds.push(id);
     }
 
-    // 本文HTML生成（テンプレ）
     const html = buildPostHtml(row);
-
-    // featured image（新規 or 強制更新時）
-    let featuredMediaId = null;
-    const alreadyHasFeatured = existingPost?.featured_media && Number(existingPost.featured_media) > 0;
-
-    if (!existingPost || FORCE_FEATURED || !alreadyHasFeatured) {
-      if (String(row.jacket_image || "").trim()) {
-        try {
-          featuredMediaId = await uploadFeaturedImage(row.jacket_image, slug);
-        } catch (e) {
-          console.log("Featured image upload failed (continue):", slug, String(e).slice(0, 200));
-        }
-      }
-    }
+    const featuredMediaId = row.jacket_image
+      ? await uploadFeaturedImage(row.jacket_image, slug)
+      : null;
 
     const payload = {
       title: `【${row.maker_code}】 ${row.title}`,
       slug,
       status: WP_STATUS,
       content: html,
-
-      // 標準タグ
       tags: tagIds,
 
-      // カスタムタクソノミー
+      genre: genreIds,
       actress: actressIds,
       director: directorIds,
-      maker: makerIds,
-      label: labelIds,
+      maker: makerIds.filter(Boolean),
+      label: labelIds.filter(Boolean),
       series: seriesIds,
     };
 
     if (featuredMediaId) payload.featured_media = featuredMediaId;
 
-    if (!existingPost) {
-      const created = await wp(`/wp-json/wp/v2/posts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      console.log("Created:", created.id, slug);
-    } else {
-      const updated = await wp(`/wp-json/wp/v2/posts/${existingPost.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      console.log("Updated:", updated.id, slug);
-    }
+    const created = await wp(`/wp-json/wp/v2/posts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    createdCount++;
+    console.log("Created:", created.id, slug);
   }
 
-  console.log("Done.");
+  console.log("CreatedCount:", createdCount);
 }
 
-main().catch((e) => {
-  console.error(e);
+main().catch(err => {
+  console.error(err);
   process.exit(1);
 });
