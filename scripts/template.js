@@ -191,18 +191,17 @@ ${movieBlock}
 <h2>作品説明</h2>
 <div class="fanza-description">${descriptionBlock}</div>
 
-<h2>レビュー評価</h2>
+<h2>みんなのレビュー評価数</h2>
 ${reviewSummaryBlock}
 
-<h2>レビュー本文（一部抜粋）</h2>
+<h2>レビュー（一部抜粋）</h2>
 ${reviewItemsHtml}
 
-<h2>レビュー一覧</h2>
 <p>本作品のすべてのレビューについては、動画ページのレビュー一覧をご確認ください。</p>
 ${affUrl ? `<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">▶ 動画ページのレビュー一覧へ</a></p>` : ""}
 
-<h2>動画はこちらから</h2>
-${affUrl ? `<p class="cta"><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">▶ 動画はこちらから</a></p>` : ""}
+<h2>作品の続きは、</h2>
+${affUrl ? `<p class="cta"><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">▶ こちらから</a></p>` : ""}
 
 <h2>作品概要</h2>
 <p>
