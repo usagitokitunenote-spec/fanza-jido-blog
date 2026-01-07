@@ -1,0 +1,12 @@
+{
+  "name": "fanza-auto-post",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/post-to-wp.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
