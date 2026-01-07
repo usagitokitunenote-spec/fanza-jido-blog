@@ -97,42 +97,68 @@ export function buildPostHtml(r) {
     ? `<figure class="fanza-jacket"><img src="${esc(r.jacket_image)}" alt="${esc(title)}"></figure>`
     : "";
 
-  
   /* ===== 基本情報 ===== */
-const infoRows = [
-  `<tr><th>作品名</th><td>${
-    affUrl
-      ? `<a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">${esc(title)}</a>`
-      : esc(title)
-  }</td></tr>`,
-  `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
-  `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
-  r.release_date
-    ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>`
-    : "",
-  r.duration_minutes
-    ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>`
-    : "",
-  r.genres
-    ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>`
-    : "",
-].filter(Boolean).join("");
-  
+  const infoRows = [
+    `<tr><th>作品名</th><td>${
+      affUrl
+        ? `<a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">${esc(title)}</a>`
+        : esc(title)
+    }</td></tr>`,
+    `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
+    `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
+    r.release_date
+      ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>`
+      : "",
+    r.duration_minutes
+      ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>`
+      : "",
+    r.genres
+      ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>`
+      : "",
+  ].filter(Boolean).join("");
+
+  /* ===== 画像 ===== */
   const sampleImages = collectSampleImages(r);
   const sampleImagesBlock = sampleImages.length
     ? `<div class="fanza-images-grid">${sampleImages.map(u => `<img src="${esc(u)}">`).join("")}</div>`
     : "";
 
+  /* ===== 動画 ===== */
   const movieBlock = r.sampleMovieURL
     ? `<iframe src="${esc(r.sampleMovieURL)}" width="560" height="360" allowfullscreen></iframe>`
     : "";
 
+  /* ===== レビュー（条件表示） ===== */
   const reviews = collectReviews(r);
-  const reviewItemsHtml = reviews.map(rv => `
+  const hasReviews = reviews.length > 0;
+
+  const reviewItemsHtml = hasReviews
+    ? reviews.map(rv => `
 <div class="fanza-review">
   <div>${esc(rv.nickname || "匿名")} ${starsHtml(rv.rating)}</div>
   <div>${excerpt(rv.comment, 150)}</div>
-</div>`).join("");
+</div>`.trim()).join("")
+    : "";
+
+  const reviewSummaryText = String(r.review_summary ?? "").trim();
+  const hasRatingInfo =
+    !!reviewSummaryText ||
+    String(r.avg_rating ?? "").trim() !== "" ||
+    String(r.rating_total ?? "").trim() !== "";
+
+  const reviewSummaryBlock = reviewSummaryText
+    ? `<p class="review-summary">${esc(reviewSummaryText)}</p>`
+    : (String(r.avg_rating ?? "").trim() || String(r.rating_total ?? "").trim())
+      ? `<p class="review-summary">平均評価：★${esc(r.avg_rating || "")}（${esc(r.rating_total || "")}件）</p>`
+      : "";
+
+  /* ===== CTA（affUrlがある時だけ） ===== */
+  const ctaBlock = affUrl
+    ? `
+<h2 id="more">作品の続きは、</h2>
+<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored">▶ こちらから</a></p>
+`.trim()
+    : "";
 
   return `
 ${titleBlock}
@@ -150,14 +176,11 @@ ${movieBlock}
 <h2 id="desc">作品説明</h2>
 ${nl2br(r.description)}
 
-<h2 id="rating">レビュー評価</h2>
-${r.review_summary || ""}
+${hasRatingInfo ? `<h2 id="rating">レビュー評価</h2>\n${reviewSummaryBlock}` : ""}
 
-<h2 id="reviews">レビュー（一部抜粋）</h2>
-${reviewItemsHtml}
+${hasReviews ? `<h2 id="reviews">レビュー（一部抜粋）</h2>\n${reviewItemsHtml}` : ""}
 
-<h2 id="more">作品の続きは、</h2>
-<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored">▶ こちらから</a></p>
+${ctaBlock}
 
 <h2 id="summary">作品概要</h2>
 <p>
