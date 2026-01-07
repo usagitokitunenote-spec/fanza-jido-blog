@@ -14,7 +14,7 @@ on:
       wp_status:
         description: "draft or publish"
         required: true
-        default: "draft"
+        default: "publish"
   schedule:
     - cron: "0 * * * *" # 毎時0分（必要なら変更）
 
