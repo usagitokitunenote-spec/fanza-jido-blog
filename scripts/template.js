@@ -38,7 +38,6 @@ function makeTaxLinksFromCsv(csv, basePath) {
 }
 
 function makeGenreLinks(csvGenres) {
-  // 記事内リンク（内部リンク）
   const items = splitCsv(csvGenres);
   if (!items.length) return "";
   return items.map(g => {
@@ -92,7 +91,24 @@ export function buildPostHtml(r) {
   const makerCode = String(r.maker_code ?? "").trim();
   const contentId = String(r.content_id ?? "").trim();
 
-  // 上部：ジャケットを最上段に
+  // 目次（最上段）
+  const toc = `
+<nav class="fanza-toc" aria-label="目次">
+  <div class="fanza-toc-title">目次</div>
+  <ol class="fanza-toc-list">
+    <li><a href="#spec">作品基本情報</a></li>
+    <li><a href="#images">画像一覧</a></li>
+    <li><a href="#movie">サンプル動画</a></li>
+    <li><a href="#desc">作品説明</a></li>
+    <li><a href="#rating">みんなのレビュー評価数</a></li>
+    <li><a href="#reviews">レビュー（一部抜粋）</a></li>
+    <li><a href="#more">作品の続き</a></li>
+    <li><a href="#summary">作品概要</a></li>
+  </ol>
+</nav>
+`.trim();
+
+  // ジャケット（目次の次）
   const jacketBlock = r.jacket_image
     ? `<figure class="fanza-jacket"><img src="${esc(r.jacket_image)}" alt="${esc(title)}" loading="lazy"></figure>`
     : "";
@@ -177,33 +193,35 @@ export function buildPostHtml(r) {
       : `<p class="review-summary">レビュー評価は取得できませんでした。</p>`;
 
   return `
+${toc}
+
 ${jacketBlock}
 
-<h2>作品基本情報</h2>
+<h2 id="spec">作品基本情報</h2>
 <table class="fanza-table"><tbody>${infoRows}</tbody></table>
 
-<h2>画像一覧</h2>
+<h2 id="images">画像一覧</h2>
 ${sampleImagesBlock}
 
-<h2>サンプル動画</h2>
+<h2 id="movie">サンプル動画</h2>
 ${movieBlock}
 
-<h2>作品説明</h2>
+<h2 id="desc">作品説明</h2>
 <div class="fanza-description">${descriptionBlock}</div>
 
-<h2>みんなのレビュー評価数</h2>
+<h2 id="rating">みんなのレビュー評価数</h2>
 ${reviewSummaryBlock}
 
-<h2>レビュー（一部抜粋）</h2>
+<h2 id="reviews">レビュー（一部抜粋）</h2>
 ${reviewItemsHtml}
 
 <p>本作品のすべてのレビューについては、動画ページのレビュー一覧をご確認ください。</p>
 ${affUrl ? `<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">▶ 動画ページのレビュー一覧へ</a></p>` : ""}
 
-<h2>作品の続きは、</h2>
+<h2 id="more">作品の続きは、</h2>
 ${affUrl ? `<p class="cta"><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">▶ こちらから</a></p>` : ""}
 
-<h2>作品概要</h2>
+<h2 id="summary">作品概要</h2>
 <p>
 本ページでは、FANZAで配信されている<br>
 「${esc(title)}（${esc(makerCode)}）」の作品情報、ジャンル、レビュー評価、サンプル動画などを一覧形式で掲載しています。
