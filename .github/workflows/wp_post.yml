@@ -10,7 +10,7 @@ on:
       mode:
         description: "skip (no update) or update (update existing posts)"
         required: true
-        default: "update"
+        default: "skip"
       wp_status:
         description: "draft or publish"
         required: true
@@ -29,6 +29,7 @@ jobs:
 
       SHEET_NAME: "シート4"
       MAX_TAGS: "10"
+      RANDOM_PICK: "1"
 
       POST_LIMIT: ${{ github.event.inputs.post_limit || '100' }}
       MODE: ${{ github.event.inputs.mode || 'update' }}
