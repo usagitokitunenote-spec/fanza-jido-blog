@@ -164,9 +164,10 @@ async function main() {
 
   // 対象抽出
   let candidates = rows
-    .filter(r => String(r.api_status || "").startsWith("OK"))
-    .filter(r => String(r.content_id || "").trim())
-    .filter(r => String(r.dmm_affiliate_url || "").trim());
+  // api_status が OK:〜 のものだけ通す（OK:videoa など）
+  .filter(r => /^OK:/i.test(String(r.api_status || "").trim()))
+  .filter(r => String(r.content_id || "").trim())
+  .filter(r => String(r.dmm_affiliate_url || "").trim());
 
   // ランダム化
   if (RANDOM_PICK) {
