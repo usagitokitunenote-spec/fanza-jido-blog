@@ -97,22 +97,7 @@ export function buildPostHtml(r) {
     ? `<figure class="fanza-jacket"><img src="${esc(r.jacket_image)}" alt="${esc(title)}"></figure>`
     : "";
 
-  /* ===== ③ 目次 ===== */
-  const toc = `
-<nav class="fanza-toc">
-  <div class="fanza-toc-title">目次</div>
-  <ol>
-    <li><a href="#spec">作品基本情報</a></li>
-    <li><a href="#images">画像一覧</a></li>
-    <li><a href="#movie">サンプル動画</a></li>
-    <li><a href="#desc">作品説明</a></li>
-    <li><a href="#rating">レビュー評価</a></li>
-    <li><a href="#reviews">レビュー（一部抜粋）</a></li>
-    <li><a href="#more">作品の続き</a></li>
-    <li><a href="#summary">作品概要</a></li>
-  </ol>
-</nav>`.trim();
-
+  
   /* ===== 基本情報 ===== */
 const infoRows = [
   `<tr><th>作品名</th><td>${
@@ -152,7 +137,6 @@ const infoRows = [
   return `
 ${titleBlock}
 ${jacketBlock}
-${toc}
 
 <h2 id="spec">作品基本情報</h2>
 <table class="fanza-table">${infoRows}</table>
