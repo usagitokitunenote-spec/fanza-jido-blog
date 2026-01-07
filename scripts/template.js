@@ -114,15 +114,25 @@ export function buildPostHtml(r) {
 </nav>`.trim();
 
   /* ===== 基本情報 ===== */
-  const infoRows = [
-    `<tr><th>作品名</th><td>${esc(title)}</td></tr>`,
-    `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
-    `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
-    r.release_date ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>` : "",
-    r.duration_minutes ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>` : "",
-    r.genres ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>` : "",
-  ].filter(Boolean).join("");
-
+const infoRows = [
+  `<tr><th>作品名</th><td>${
+    affUrl
+      ? `<a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">${esc(title)}</a>`
+      : esc(title)
+  }</td></tr>`,
+  `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
+  `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
+  r.release_date
+    ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>`
+    : "",
+  r.duration_minutes
+    ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>`
+    : "",
+  r.genres
+    ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>`
+    : "",
+].filter(Boolean).join("");
+  
   const sampleImages = collectSampleImages(r);
   const sampleImagesBlock = sampleImages.length
     ? `<div class="fanza-images-grid">${sampleImages.map(u => `<img src="${esc(u)}">`).join("")}</div>`
