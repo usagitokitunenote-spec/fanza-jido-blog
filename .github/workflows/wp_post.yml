@@ -37,7 +37,7 @@ jobs:
       RANDOM_PICK: "1"
 
       # ========= 重要：cronでもpublishさせる =========
-      POST_LIMIT: ${{ github.event_name == 'schedule' && '100' || github.event.inputs.post_limit || '30' }}
+      POST_LIMIT: ${{ github.event_name == 'schedule' && '30' || github.event.inputs.post_limit || '30' }}
       MODE: ${{ github.event_name == 'schedule' && 'skip' || github.event.inputs.mode || 'skip' }}
       WP_STATUS: ${{ github.event_name == 'schedule' && 'publish' || github.event.inputs.wp_status || 'publish' }}
 
