@@ -87,30 +87,6 @@ function collectReviews(row) {
   return items;
 }
 
-/**
- * 動画：埋め込み(iframe)は維持しつつ、表示だけで外部アクセスが走らないように
- * 本文では iframe を生成せず data-src に保持する。
- * 実際の iframe 生成は Cocoon Child の functions.php 側JSで行う。
- */
-function buildMoviePlaceholder(sampleMovieURL) {
-  const u = String(sampleMovieURL ?? "").trim();
-  if (!u) return "";
-
-  // NOTE: ここでは iframe を作らない（勝手に踏まない）
-  // JS（functions.php側）が .fanza-movie__play を押されたら iframe を生成する想定
-  return `
-<div class="fanza-movie" data-src="${esc(u)}" style="max-width:560px;">
-  <div class="fanza-movie__frame"
-       style="width:100%;aspect-ratio:560/360;display:grid;place-items:center;border:1px solid #ddd;">
-    <button type="button" class="fanza-movie__play"
-            style="cursor:pointer;padding:.6em 1em;border:1px solid #ccc;background:#fff;border-radius:6px;">
-      ▶ 動画を再生する
-    </button>
-  </div>
-</div>
-`.trim();
-}
-
 export function buildPostHtml(r) {
   const title = String(r.title ?? "").trim();
   const affUrl = String(r.dmm_affiliate_url ?? "").trim();
@@ -134,10 +110,18 @@ export function buildPostHtml(r) {
     }</td></tr>`,
     `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
     `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
-    r.release_date ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>` : "",
-    r.duration_minutes ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>` : "",
-    r.genres ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>` : "",
-  ].filter(Boolean).join("");
+    r.release_date
+      ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>`
+      : "",
+    r.duration_minutes
+      ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>`
+      : "",
+    r.genres
+      ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
 
   /* ===== 画像 ===== */
   const sampleImages = collectSampleImages(r);
@@ -145,9 +129,9 @@ export function buildPostHtml(r) {
     ? `<div class="fanza-images-grid">${sampleImages.map(u => `<img src="${esc(u)}">`).join("")}</div>`
     : "";
 
-  /* ===== 動画（埋め込み必須：クリックで iframe を生成） ===== */
+  /* ===== 動画 ===== */
   const movieBlock = r.sampleMovieURL
-    ? buildMoviePlaceholder(r.sampleMovieURL)
+    ? `<iframe src="${esc(r.sampleMovieURL)}" width="560" height="360" allowfullscreen></iframe>`
     : "";
 
   /* ===== レビュー（条件表示） ===== */
@@ -155,11 +139,15 @@ export function buildPostHtml(r) {
   const hasReviews = reviews.length > 0;
 
   const reviewItemsHtml = hasReviews
-    ? reviews.map(rv => `
+    ? reviews
+        .map(
+          rv => `
 <div class="fanza-review">
   <div>${esc(rv.nickname || "匿名")} ${starsHtml(rv.rating)}</div>
   <div>${excerpt(rv.comment, 150)}</div>
-</div>`.trim()).join("")
+</div>`.trim()
+        )
+        .join("")
     : "";
 
   const reviewSummaryText = String(r.review_summary ?? "").trim();
@@ -170,7 +158,7 @@ export function buildPostHtml(r) {
 
   const reviewSummaryBlock = reviewSummaryText
     ? `<p class="review-summary">${esc(reviewSummaryText)}</p>`
-    : (String(r.avg_rating ?? "").trim() || String(r.rating_total ?? "").trim())
+    : String(r.avg_rating ?? "").trim() || String(r.rating_total ?? "").trim()
       ? `<p class="review-summary">平均評価：★${esc(r.avg_rating || "")}（${esc(r.rating_total || "")}件）</p>`
       : "";
 
@@ -178,7 +166,7 @@ export function buildPostHtml(r) {
   const ctaBlock = affUrl
     ? `
 <h2 id="more">作品の続きは、</h2>
-<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">▶ こちらから</a></p>
+<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored">▶ こちらから</a></p>
 `.trim()
     : "";
 
