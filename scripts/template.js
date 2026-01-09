@@ -31,19 +31,23 @@ function slugifyForPath(input) {
 function makeTaxLinksFromCsv(csv, basePath) {
   const items = splitCsv(csv);
   if (!items.length) return "";
-  return items.map(name => {
-    const slug = slugifyForPath(name);
-    return `<a href="/${basePath}/${slug}/">${esc(name)}</a>`;
-  }).join(", ");
+  return items
+    .map(name => {
+      const slug = slugifyForPath(name);
+      return `<a href="/${basePath}/${slug}/">${esc(name)}</a>`;
+    })
+    .join(", ");
 }
 
 function makeGenreLinks(csvGenres) {
   const items = splitCsv(csvGenres);
   if (!items.length) return "";
-  return items.map(g => {
-    const slug = slugifyForPath(g);
-    return `<a class="genre" href="/genre/${slug}/">${esc(g)}</a>`;
-  }).join(" ");
+  return items
+    .map(g => {
+      const slug = slugifyForPath(g);
+      return `<a class="genre" href="/genre/${slug}/">${esc(g)}</a>`;
+    })
+    .join(" ");
 }
 
 function starsHtml(rating) {
@@ -84,70 +88,26 @@ function collectReviews(row) {
 }
 
 /**
- * サンプル動画：埋め込み見た目は維持しつつ、
- * iframe src を最初から差し込まないことで「表示だけで外部アクセス」を防ぐ。
- * ユーザー操作（クリック/Enter/Space）で初めて iframe を生成して src をセットする。
+ * 動画：埋め込み(iframe)は維持しつつ、表示だけで外部アクセスが走らないように
+ * 本文では iframe を生成せず data-src に保持する。
+ * 実際の iframe 生成は Cocoon Child の functions.php 側JSで行う。
  */
-function buildLazyEmbedMovie(url) {
-  const u = String(url ?? "").trim();
+function buildMoviePlaceholder(sampleMovieURL) {
+  const u = String(sampleMovieURL ?? "").trim();
   if (!u) return "";
 
-  // data-src へ入れるのでエスケープは esc でOK
+  // NOTE: ここでは iframe を作らない（勝手に踏まない）
+  // JS（functions.php側）が .fanza-movie__play を押されたら iframe を生成する想定
   return `
 <div class="fanza-movie" data-src="${esc(u)}" style="max-width:560px;">
-  <div class="fanza-movie__placeholder"
-       role="button" tabindex="0"
-       aria-label="サンプル動画を表示"
-       style="width:100%;aspect-ratio:560/360;display:grid;place-items:center;border:1px solid #ddd;cursor:pointer;">
-    <span>▶ サンプル動画を表示</span>
+  <div class="fanza-movie__frame"
+       style="width:100%;aspect-ratio:560/360;display:grid;place-items:center;border:1px solid #ddd;">
+    <button type="button" class="fanza-movie__play"
+            style="cursor:pointer;padding:.6em 1em;border:1px solid #ccc;background:#fff;border-radius:6px;">
+      ▶ 動画を再生する
+    </button>
   </div>
 </div>
-
-<script>
-(function(){
-  // 既に同ページ内で初期化済みなら何もしない（記事内に複数あっても安全）
-  if (window.__fanzaMovieInitDone) return;
-  window.__fanzaMovieInitDone = true;
-
-  function loadMovie(box){
-    if(!box || box.dataset.loaded === "1") return;
-    var src = box.getAttribute("data-src");
-    if(!src) return;
-
-    var ifr = document.createElement("iframe");
-    ifr.width = "560";
-    ifr.height = "360";
-    ifr.style.width = "100%";
-    ifr.style.height = "auto";
-    ifr.style.aspectRatio = "560/360";
-    ifr.setAttribute("allowfullscreen", "");
-    ifr.setAttribute("loading", "lazy");
-    ifr.src = src;
-
-    box.innerHTML = "";
-    box.appendChild(ifr);
-    box.dataset.loaded = "1";
-  }
-
-  // クリックでロード
-  document.addEventListener("click", function(e){
-    var ph = e.target && e.target.closest ? e.target.closest(".fanza-movie__placeholder") : null;
-    if(!ph) return;
-    var box = ph.closest(".fanza-movie");
-    loadMovie(box);
-  }, true);
-
-  // Enter / Space でもロード
-  document.addEventListener("keydown", function(e){
-    if(e.key !== "Enter" && e.key !== " ") return;
-    var el = document.activeElement;
-    if(!el || !el.classList || !el.classList.contains("fanza-movie__placeholder")) return;
-    e.preventDefault();
-    var box = el.closest(".fanza-movie");
-    loadMovie(box);
-  }, true);
-})();
-</script>
 `.trim();
 }
 
@@ -174,15 +134,9 @@ export function buildPostHtml(r) {
     }</td></tr>`,
     `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
     `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
-    r.release_date
-      ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>`
-      : "",
-    r.duration_minutes
-      ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>`
-      : "",
-    r.genres
-      ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>`
-      : "",
+    r.release_date ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>` : "",
+    r.duration_minutes ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>` : "",
+    r.genres ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>` : "",
   ].filter(Boolean).join("");
 
   /* ===== 画像 ===== */
@@ -191,9 +145,9 @@ export function buildPostHtml(r) {
     ? `<div class="fanza-images-grid">${sampleImages.map(u => `<img src="${esc(u)}">`).join("")}</div>`
     : "";
 
-  /* ===== 動画（埋め込み見た目維持＋遅延ロード） ===== */
+  /* ===== 動画（埋め込み必須：クリックで iframe を生成） ===== */
   const movieBlock = r.sampleMovieURL
-    ? buildLazyEmbedMovie(r.sampleMovieURL)
+    ? buildMoviePlaceholder(r.sampleMovieURL)
     : "";
 
   /* ===== レビュー（条件表示） ===== */
