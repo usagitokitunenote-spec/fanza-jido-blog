@@ -83,6 +83,74 @@ function collectReviews(row) {
   return items;
 }
 
+/**
+ * サンプル動画：埋め込み見た目は維持しつつ、
+ * iframe src を最初から差し込まないことで「表示だけで外部アクセス」を防ぐ。
+ * ユーザー操作（クリック/Enter/Space）で初めて iframe を生成して src をセットする。
+ */
+function buildLazyEmbedMovie(url) {
+  const u = String(url ?? "").trim();
+  if (!u) return "";
+
+  // data-src へ入れるのでエスケープは esc でOK
+  return `
+<div class="fanza-movie" data-src="${esc(u)}" style="max-width:560px;">
+  <div class="fanza-movie__placeholder"
+       role="button" tabindex="0"
+       aria-label="サンプル動画を表示"
+       style="width:100%;aspect-ratio:560/360;display:grid;place-items:center;border:1px solid #ddd;cursor:pointer;">
+    <span>▶ サンプル動画を表示</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  // 既に同ページ内で初期化済みなら何もしない（記事内に複数あっても安全）
+  if (window.__fanzaMovieInitDone) return;
+  window.__fanzaMovieInitDone = true;
+
+  function loadMovie(box){
+    if(!box || box.dataset.loaded === "1") return;
+    var src = box.getAttribute("data-src");
+    if(!src) return;
+
+    var ifr = document.createElement("iframe");
+    ifr.width = "560";
+    ifr.height = "360";
+    ifr.style.width = "100%";
+    ifr.style.height = "auto";
+    ifr.style.aspectRatio = "560/360";
+    ifr.setAttribute("allowfullscreen", "");
+    ifr.setAttribute("loading", "lazy");
+    ifr.src = src;
+
+    box.innerHTML = "";
+    box.appendChild(ifr);
+    box.dataset.loaded = "1";
+  }
+
+  // クリックでロード
+  document.addEventListener("click", function(e){
+    var ph = e.target && e.target.closest ? e.target.closest(".fanza-movie__placeholder") : null;
+    if(!ph) return;
+    var box = ph.closest(".fanza-movie");
+    loadMovie(box);
+  }, true);
+
+  // Enter / Space でもロード
+  document.addEventListener("keydown", function(e){
+    if(e.key !== "Enter" && e.key !== " ") return;
+    var el = document.activeElement;
+    if(!el || !el.classList || !el.classList.contains("fanza-movie__placeholder")) return;
+    e.preventDefault();
+    var box = el.closest(".fanza-movie");
+    loadMovie(box);
+  }, true);
+})();
+</script>
+`.trim();
+}
+
 export function buildPostHtml(r) {
   const title = String(r.title ?? "").trim();
   const affUrl = String(r.dmm_affiliate_url ?? "").trim();
@@ -123,9 +191,9 @@ export function buildPostHtml(r) {
     ? `<div class="fanza-images-grid">${sampleImages.map(u => `<img src="${esc(u)}">`).join("")}</div>`
     : "";
 
-  /* ===== 動画 ===== */
+  /* ===== 動画（埋め込み見た目維持＋遅延ロード） ===== */
   const movieBlock = r.sampleMovieURL
-    ? `<iframe src="${esc(r.sampleMovieURL)}" width="560" height="360" allowfullscreen></iframe>`
+    ? buildLazyEmbedMovie(r.sampleMovieURL)
     : "";
 
   /* ===== レビュー（条件表示） ===== */
@@ -156,7 +224,7 @@ export function buildPostHtml(r) {
   const ctaBlock = affUrl
     ? `
 <h2 id="more">作品の続きは、</h2>
-<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored">▶ こちらから</a></p>
+<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">▶ こちらから</a></p>
 `.trim()
     : "";
 
