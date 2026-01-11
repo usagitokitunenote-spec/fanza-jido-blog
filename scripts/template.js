@@ -73,7 +73,7 @@ function collectSampleImages(row) {
   return urls;
 }
 
-/* ===== 横スワイプ＋折りたたみ（文言は維持、アイコンだけ付ける） ===== */
+/* ===== サンプル画像：横スワイプ＋折りたたみ（文言は維持） ===== */
 function buildSwipeImagesBlock(urls, visibleCount = 8) {
   const list = Array.isArray(urls) ? urls : [];
   if (!list.length) return "";
@@ -83,10 +83,14 @@ function buildSwipeImagesBlock(urls, visibleCount = 8) {
 
   const swipe = imgs => `
 <div class="fanza-swipe">
-  ${imgs.map(u => `
+  ${imgs
+    .map(
+      u => `
     <div class="fanza-swipe-item">
       <img src="${esc(u)}" loading="lazy" alt="">
-    </div>`).join("")}
+    </div>`.trim()
+    )
+    .join("")}
 </div>`.trim();
 
   if (!rest.length) return swipe(head);
@@ -97,6 +101,18 @@ ${swipe(head)}
   <summary><span class="fanza-more-ic" aria-hidden="true">＋</span> 画像をもっと見る（全${list.length}枚）</summary>
   ${swipe(rest)}
 </details>
+`.trim();
+}
+
+/* ===== サンプル動画直下：HTMLボタンCTA（押したら白に反転） ===== */
+function buildFanzaHtmlButton(affUrl) {
+  if (!affUrl) return "";
+  return `
+<div class="fanza-html-cta">
+  <a href="${esc(affUrl)}" class="fanza-btn" target="_blank" rel="nofollow sponsored noopener">
+    作品ページをFANZAで確認する
+  </a>
+</div>
 `.trim();
 }
 
@@ -120,15 +136,10 @@ export function buildPostHtml(r) {
   const makerCode = String(r.maker_code ?? "").trim();
   const contentId = String(r.content_id ?? "").trim();
 
-  /* ✅ 336×280バナー画像URL：envが未注入でも出るようにフォールバック */
-  const bannerImg =
-    String(process.env.FANZA_BANNER_IMAGE_336_280 ?? "").trim() ||
-    String(r.fanza_banner_image ?? "").trim(); // CSVに持たせる場合
-
   /* ===== ① タイトル ===== */
   const titleBlock = `<h2 class="fanza-title">${esc(title)}</h2>`;
 
-  /* ===== ② ジャケット（画像クリックでアフィURLへ） ===== */
+  /* ===== ② ジャケット（画像クリックでアフィへ） ===== */
   const jacketBlock = r.jacket_image
     ? (affUrl
         ? `<figure class="fanza-jacket">
@@ -149,40 +160,24 @@ export function buildPostHtml(r) {
     }</td></tr>`,
     `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
     `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
-    r.release_date
-      ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>`
-      : "",
-    r.duration_minutes
-      ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>`
-      : "",
-    r.genres
-      ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>`
-      : "",
+    r.release_date ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>` : "",
+    r.duration_minutes ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>` : "",
+    r.genres ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>` : "",
   ]
     .filter(Boolean)
     .join("");
 
   /* ===== 画像（横スワイプ＋折りたたみ） ===== */
   const sampleImages = collectSampleImages(r);
-  const sampleImagesBlock = sampleImages.length
-    ? buildSwipeImagesBlock(sampleImages, 8)
-    : "";
+  const sampleImagesBlock = sampleImages.length ? buildSwipeImagesBlock(sampleImages, 8) : "";
 
   /* ===== 動画 ===== */
   const movieBlock = r.sampleMovieURL
     ? `<iframe src="${esc(r.sampleMovieURL)}" width="560" height="360" allowfullscreen loading="lazy"></iframe>`
     : "";
 
-  /* ✅ サンプル動画直下：バナーリンク（affUrlとbannerImgがある時だけ） */
-  const movieBannerBlock = (affUrl && bannerImg)
-    ? `
-<div class="fanza-movie-banner">
-  <a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">
-    <img src="${esc(bannerImg)}" alt="FANZA公式配信ページで内容を確認" loading="lazy">
-  </a>
-</div>
-`.trim()
-    : "";
+  /* ✅ サンプル動画直下：HTMLボタンCTA */
+  const movieCtaButtonBlock = buildFanzaHtmlButton(affUrl);
 
   /* ===== レビュー（条件表示） ===== */
   const reviews = collectReviews(r);
@@ -232,7 +227,7 @@ ${sampleImagesBlock}
 
 <h2 id="movie">サンプル動画</h2>
 ${movieBlock}
-${movieBannerBlock}
+${movieCtaButtonBlock}
 
 <h2 id="desc">作品説明</h2>
 ${nl2br(r.description)}
