@@ -28,6 +28,17 @@ function slugifyForPath(input) {
   return encodeURIComponent(cleaned);
 }
 
+function makeTaxLinksFromCsv(csv, basePath) {
+  const items = splitCsv(csv);
+  if (!items.length) return "";
+  return items
+    .map(name => {
+      const slug = slugifyForPath(name);
+      return `<a href="/${basePath}/${slug}/">${esc(name)}</a>`;
+    })
+    .join(", ");
+}
+
 function makeGenreLinks(csvGenres) {
   const items = splitCsv(csvGenres);
   if (!items.length) return "";
@@ -62,12 +73,13 @@ function collectSampleImages(row) {
   return urls;
 }
 
-/* ===== 横スワイプ＋折りたたみ ===== */
+/* ===== 横スワイプ＋折りたたみ（文言は維持、アイコンだけ付ける） ===== */
 function buildSwipeImagesBlock(urls, visibleCount = 8) {
-  if (!urls.length) return "";
+  const list = Array.isArray(urls) ? urls : [];
+  if (!list.length) return "";
 
-  const head = urls.slice(0, visibleCount);
-  const rest = urls.slice(visibleCount);
+  const head = list.slice(0, visibleCount);
+  const rest = list.slice(visibleCount);
 
   const swipe = imgs => `
 <div class="fanza-swipe">
@@ -82,7 +94,7 @@ function buildSwipeImagesBlock(urls, visibleCount = 8) {
   return `
 ${swipe(head)}
 <details class="fanza-images-more">
-  <summary>画像をもっと見る（全${urls.length}枚）</summary>
+  <summary><span class="fanza-more-ic" aria-hidden="true">＋</span> 画像をもっと見る（全${list.length}枚）</summary>
   ${swipe(rest)}
 </details>
 `.trim();
@@ -108,60 +120,104 @@ export function buildPostHtml(r) {
   const makerCode = String(r.maker_code ?? "").trim();
   const contentId = String(r.content_id ?? "").trim();
 
-  // 336×280 FANZA公式バナー（全記事共通）
-  const bannerImg = String(process.env.FANZA_BANNER_IMAGE_336_280 ?? "").trim();
+  /* ✅ 336×280バナー画像URL：envが未注入でも出るようにフォールバック */
+  const bannerImg =
+    String(process.env.FANZA_BANNER_IMAGE_336_280 ?? "").trim() ||
+    String(r.fanza_banner_image ?? "").trim(); // CSVに持たせる場合
 
-  /* ===== タイトル ===== */
+  /* ===== ① タイトル ===== */
   const titleBlock = `<h2 class="fanza-title">${esc(title)}</h2>`;
 
-  /* ===== ジャケット（クリックでアフィ） ===== */
+  /* ===== ② ジャケット（画像クリックでアフィURLへ） ===== */
   const jacketBlock = r.jacket_image
-    ? `<figure class="fanza-jacket">
-        <a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">
-          <img src="${esc(r.jacket_image)}" alt="${esc(title)}" loading="lazy">
-        </a>
-      </figure>`
+    ? (affUrl
+        ? `<figure class="fanza-jacket">
+            <a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">
+              <img src="${esc(r.jacket_image)}" alt="${esc(title)}" loading="lazy">
+            </a>
+          </figure>`
+        : `<figure class="fanza-jacket"><img src="${esc(r.jacket_image)}" alt="${esc(title)}" loading="lazy"></figure>`
+      )
     : "";
 
   /* ===== 基本情報 ===== */
   const infoRows = [
-    `<tr><th>作品名</th><td>${esc(title)}</td></tr>`,
+    `<tr><th>作品名</th><td>${
+      affUrl
+        ? `<a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">${esc(title)}</a>`
+        : esc(title)
+    }</td></tr>`,
     `<tr><th>メーカー番号</th><td>${esc(makerCode)}</td></tr>`,
     `<tr><th>配信番号</th><td>${esc(contentId)}</td></tr>`,
-    r.release_date ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>` : "",
-    r.duration_minutes ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>` : "",
-    r.genres ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>` : "",
-  ].filter(Boolean).join("");
+    r.release_date
+      ? `<tr><th>配信開始日</th><td>${esc(r.release_date)}</td></tr>`
+      : "",
+    r.duration_minutes
+      ? `<tr><th>収録時間</th><td>${esc(r.duration_minutes)}分</td></tr>`
+      : "",
+    r.genres
+      ? `<tr><th>ジャンル</th><td>${makeGenreLinks(r.genres)}</td></tr>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
 
-  /* ===== 見どころポイント（横スワイプ） ===== */
+  /* ===== 画像（横スワイプ＋折りたたみ） ===== */
   const sampleImages = collectSampleImages(r);
-  const sampleImagesBlock = buildSwipeImagesBlock(sampleImages, 8);
+  const sampleImagesBlock = sampleImages.length
+    ? buildSwipeImagesBlock(sampleImages, 8)
+    : "";
 
   /* ===== 動画 ===== */
   const movieBlock = r.sampleMovieURL
     ? `<iframe src="${esc(r.sampleMovieURL)}" width="560" height="360" allowfullscreen loading="lazy"></iframe>`
     : "";
 
-  /* ===== 動画直下バナー ===== */
+  /* ✅ サンプル動画直下：バナーリンク（affUrlとbannerImgがある時だけ） */
   const movieBannerBlock = (affUrl && bannerImg)
     ? `
 <div class="fanza-movie-banner">
   <a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">
     <img src="${esc(bannerImg)}" alt="FANZA公式配信ページで内容を確認" loading="lazy">
   </a>
-</div>`
+</div>
+`.trim()
     : "";
 
-  /* ===== レビュー ===== */
+  /* ===== レビュー（条件表示） ===== */
   const reviews = collectReviews(r);
   const hasReviews = reviews.length > 0;
 
   const reviewItemsHtml = hasReviews
-    ? reviews.map(rv => `
+    ? reviews
+        .map(
+          rv => `
 <div class="fanza-review">
   <div>${esc(rv.nickname || "匿名")} ${starsHtml(rv.rating)}</div>
   <div>${excerpt(rv.comment, 150)}</div>
-</div>`).join("")
+</div>`.trim()
+        )
+        .join("")
+    : "";
+
+  const reviewSummaryText = String(r.review_summary ?? "").trim();
+  const hasRatingInfo =
+    !!reviewSummaryText ||
+    String(r.avg_rating ?? "").trim() !== "" ||
+    String(r.rating_total ?? "").trim() !== "";
+
+  const reviewSummaryBlock = reviewSummaryText
+    ? `<p class="review-summary">${esc(reviewSummaryText)}</p>`
+    : String(r.avg_rating ?? "").trim() || String(r.rating_total ?? "").trim()
+      ? `<p class="review-summary">平均評価：★${esc(r.avg_rating || "")}（${esc(r.rating_total || "")}件）</p>`
+      : "";
+
+  /* ===== CTA（現行維持） ===== */
+  const ctaBlock = affUrl
+    ? `
+<h2 id="more">作品の続きは、</h2>
+<p><a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored">▶ こちらから</a></p>
+`.trim()
     : "";
 
   return `
@@ -181,7 +237,11 @@ ${movieBannerBlock}
 <h2 id="desc">作品説明</h2>
 ${nl2br(r.description)}
 
+${hasRatingInfo ? `<h2 id="rating">レビュー評価</h2>\n${reviewSummaryBlock}` : ""}
+
 ${hasReviews ? `<h2 id="reviews">レビュー（一部抜粋）</h2>\n${reviewItemsHtml}` : ""}
+
+${ctaBlock}
 
 <h2 id="summary">作品概要</h2>
 <p>
