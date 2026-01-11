@@ -22,13 +22,10 @@ const MODE = (process.env.MODE || "skip").toLowerCase(); // skip / update
 const WP_STATUS = (process.env.WP_STATUS || "draft").toLowerCase();
 const MAX_TAGS = Number(process.env.MAX_TAGS || 10);
 const RANDOM_PICK = (process.env.RANDOM_PICK || "1") === "1";
-
-// 既存投稿のアイキャッチも更新したいなら 1（YMLですでに env あり）
 const FORCE_FEATURED = (process.env.FORCE_FEATURED || "0") === "1";
 
 /* ======================
    手編集・index済み（守る）9件：slug除外
-   ※ URL末尾がslug
 ====================== */
 const EXCLUDE_SLUGS = new Set([
   "smus063",
@@ -191,7 +188,7 @@ async function main() {
     .filter(r => String(r.content_id || "").trim())
     .filter(r => String(r.dmm_affiliate_url || "").trim());
 
-  // ランダム化（updateで全件揃えるときは OFF 推奨）
+  // ランダム化（順番荒れてもOKならONでも可）
   if (RANDOM_PICK) {
     for (let i = candidates.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -206,20 +203,26 @@ async function main() {
 
     const slug = normalizeSlug(row.content_id);
 
-    // ✅ 9件は触らない（手編集＋index済み保護）
+    // ✅ 手編集・index済みは触らない
     if (EXCLUDE_SLUGS.has(slug)) {
       console.log("Exclude (manual/indexed):", slug);
       continue;
     }
 
-    // 既存チェック
+    // 既存確認（slugで決め打ち）
     const exist = await wp(`/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&per_page=1`);
     const hasExisting = exist && exist.length;
     const postId = hasExisting ? exist[0].id : null;
 
-    // 既存があって MODE=skip なら今まで通りスキップ
-    if (hasExisting && MODE !== "update") {
+    // ✅ MODEごとの挙動を固定
+    // skip：既存は触らない、新規だけ作る
+    if (MODE === "skip" && hasExisting) {
       console.log("Skip existing:", slug);
+      continue;
+    }
+    // update：既存だけ更新、新規は作らない
+    if (MODE === "update" && !hasExisting) {
+      console.log("Skip create (update-only):", slug);
       continue;
     }
 
@@ -262,8 +265,8 @@ async function main() {
     const html = buildPostHtml(row);
 
     // featured_media：
-    // - 新規は付ける
-    // - 既存は FORCE_FEATURED=1 のときだけ更新
+    // - create（MODE=skipで新規）なら付ける
+    // - updateなら FORCE_FEATURED=1 のときだけ更新
     let featuredMediaId = null;
     if (row.jacket_image && (!hasExisting || FORCE_FEATURED)) {
       featuredMediaId = await uploadFeaturedImage(row.jacket_image, slug);
@@ -286,19 +289,21 @@ async function main() {
 
     if (featuredMediaId) payload.featured_media = featuredMediaId;
 
-    // 新規 or 更新
-    const endpoint = postId ? `/wp-json/wp/v2/posts/${postId}` : `/wp-json/wp/v2/posts`;
+    // ✅ endpoint：update-only時は必ず posts/{id}
+    // skipで新規のときは posts
+    const endpoint = hasExisting
+      ? `/wp-json/wp/v2/posts/${postId}`
+      : `/wp-json/wp/v2/posts`;
 
     const saved = await wp(endpoint, {
-      method: "POST", // WPは POST で更新OK
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
     processed++;
-    console.log(postId ? "Updated:" : "Created:", saved.id, slug);
+    console.log(hasExisting ? "Updated:" : "Created:", saved.id, slug);
 
-    // 連打しすぎ防止（サーバー保護）
     await sleep(200);
   }
 
