@@ -22,6 +22,7 @@ const MODE = (process.env.MODE || "skip").toLowerCase(); // skip / update
 const WP_STATUS = (process.env.WP_STATUS || "draft").toLowerCase();
 const MAX_TAGS = Number(process.env.MAX_TAGS || 10);
 const RANDOM_PICK = (process.env.RANDOM_PICK || "1") === "1";
+// NOTE: featured image upload を廃止したため FORCE_FEATURED は未使用（envは残してOK）
 const FORCE_FEATURED = (process.env.FORCE_FEATURED || "0") === "1";
 
 /* ======================
@@ -92,7 +93,9 @@ async function upsertTerm(taxonomy, name) {
   const key = `${taxonomy}|${n}`;
   if (termCache.has(key)) return termCache.get(key);
 
-  const found = await wp(`/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(n)}&per_page=100`);
+  const found = await wp(
+    `/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(n)}&per_page=100`
+  );
   const exact = (found || []).find(t => String(t.name).trim() === n);
   if (exact) {
     termCache.set(key, exact.id);
@@ -154,26 +157,6 @@ async function upsertWpTag(name) {
     body: JSON.stringify({ name: n }),
   });
   return created.id;
-}
-
-/* ======================
-   Featured image
-====================== */
-async function uploadFeaturedImage(jacketUrl, filenameBase) {
-  const imgRes = await fetch(jacketUrl);
-  if (!imgRes.ok) return null;
-
-  const buf = Buffer.from(await imgRes.arrayBuffer());
-  const media = await wp(`/wp-json/wp/v2/media`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Disposition": `attachment; filename="${filenameBase}.jpg"`,
-      "Content-Type": "image/jpeg",
-    },
-    body: buf,
-  });
-  return media?.id ?? null;
 }
 
 /* ======================
@@ -262,15 +245,8 @@ async function main() {
       if (id) tagIds.push(id);
     }
 
+    // ✅ 記事本文はそのまま（内容は変えない）
     const html = buildPostHtml(row);
-
-    // featured_media：
-    // - create（MODE=skipで新規）なら付ける
-    // - updateなら FORCE_FEATURED=1 のときだけ更新
-    let featuredMediaId = null;
-    if (row.jacket_image && (!hasExisting || FORCE_FEATURED)) {
-      featuredMediaId = await uploadFeaturedImage(row.jacket_image, slug);
-    }
 
     const payload = {
       title: `【${row.maker_code}】 ${row.title}`,
@@ -286,8 +262,6 @@ async function main() {
       label: labelIds.filter(Boolean),
       series: seriesIds,
     };
-
-    if (featuredMediaId) payload.featured_media = featuredMediaId;
 
     // ✅ endpoint：update-only時は必ず posts/{id}
     // skipで新規のときは posts
