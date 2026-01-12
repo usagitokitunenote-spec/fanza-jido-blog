@@ -139,15 +139,23 @@ export function buildPostHtml(r) {
   /* ===== ① タイトル ===== */
   const titleBlock = `<h2 class="fanza-title">${esc(title)}</h2>`;
 
-  /* ===== ② ジャケット（画像クリックでアフィへ） ===== */
-  const jacketBlock = r.jacket_image
+  /* ===== ② ジャケット（画像クリックでアフィへ） =====
+     - sample_image_1 を最優先（＝ジャケ扱い）
+     - なければ従来通り jacket_image
+     ※ HTML構造・文言は変更しない
+  */
+  const jacketSrc =
+    String(r.sample_image_1 ?? "").trim() ||
+    String(r.jacket_image ?? "").trim();
+
+  const jacketBlock = jacketSrc
     ? (affUrl
         ? `<figure class="fanza-jacket">
             <a href="${esc(affUrl)}" target="_blank" rel="nofollow sponsored noopener">
-              <img src="${esc(r.jacket_image)}" alt="${esc(title)}" loading="lazy">
+              <img src="${esc(jacketSrc)}" alt="${esc(title)}" loading="lazy">
             </a>
           </figure>`
-        : `<figure class="fanza-jacket"><img src="${esc(r.jacket_image)}" alt="${esc(title)}" loading="lazy"></figure>`
+        : `<figure class="fanza-jacket"><img src="${esc(jacketSrc)}" alt="${esc(title)}" loading="lazy"></figure>`
       )
     : "";
 
