@@ -22,8 +22,6 @@ const MODE = (process.env.MODE || "skip").toLowerCase(); // skip / update
 const WP_STATUS = (process.env.WP_STATUS || "draft").toLowerCase();
 const MAX_TAGS = Number(process.env.MAX_TAGS || 10);
 const RANDOM_PICK = (process.env.RANDOM_PICK || "1") === "1";
-// NOTE: featured image upload を廃止したため FORCE_FEATURED は未使用（envは残してOK）
-const FORCE_FEATURED = (process.env.FORCE_FEATURED || "0") === "1";
 
 /* ======================
    手編集・index済み（守る）9件：slug除外
@@ -46,13 +44,32 @@ const EXCLUDE_SLUGS = new Set([
 const auth = Buffer.from(`${WP_USER}:${WP_APP_PASS}`).toString("base64");
 
 async function wp(path, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+
+  // headers を正規化（415対策）
+  const baseHeaders = {
+    Authorization: `Basic ${auth}`,
+    Accept: "application/json",
+    // openresty / WAF が UA 無しを弾くケース対策
+    "User-Agent": "fanza-jido-blog-bot/1.0",
+  };
+
+  const headers = {
+    ...baseHeaders,
+    ...(options.headers || {}),
+  };
+
+  // JSONボディ送信時に Content-Type が無いと 415 になり得るため補完
+  if (method !== "GET" && method !== "HEAD" && options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json; charset=utf-8";
+  }
+
   const res = await fetch(`${WP_BASE_URL}${path}`, {
     ...options,
-    headers: {
-      Authorization: `Basic ${auth}`,
-      ...(options.headers || {}),
-    },
+    method,
+    headers,
   });
+
   const text = await res.text();
   if (!res.ok) throw new Error(`WP API error ${res.status}: ${text}`);
   return text ? JSON.parse(text) : null;
@@ -93,9 +110,7 @@ async function upsertTerm(taxonomy, name) {
   const key = `${taxonomy}|${n}`;
   if (termCache.has(key)) return termCache.get(key);
 
-  const found = await wp(
-    `/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(n)}&per_page=100`
-  );
+  const found = await wp(`/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(n)}&per_page=100`);
   const exact = (found || []).find(t => String(t.name).trim() === n);
   if (exact) {
     termCache.set(key, exact.id);
@@ -104,7 +119,7 @@ async function upsertTerm(taxonomy, name) {
 
   const created = await wp(`/wp-json/wp/v2/${taxonomy}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ name: n }),
   });
 
@@ -153,7 +168,7 @@ async function upsertWpTag(name) {
 
   const created = await wp(`/wp-json/wp/v2/tags`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ name: n }),
   });
   return created.id;
@@ -245,7 +260,7 @@ async function main() {
       if (id) tagIds.push(id);
     }
 
-    // ✅ 記事本文はそのまま（内容は変えない）
+    // ✅ 記事本文はそのまま
     const html = buildPostHtml(row);
 
     const payload = {
@@ -264,14 +279,14 @@ async function main() {
     };
 
     // ✅ endpoint：update-only時は必ず posts/{id}
-    // skipで新規のときは posts
     const endpoint = hasExisting
       ? `/wp-json/wp/v2/posts/${postId}`
       : `/wp-json/wp/v2/posts`;
 
+    // ✅ 更新は PUT（環境によって POST更新が弾かれる対策）
     const saved = await wp(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: hasExisting ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify(payload),
     });
 
