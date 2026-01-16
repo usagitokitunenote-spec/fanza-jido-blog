@@ -1,5 +1,13 @@
+function safeUnicode(str) {
+  if (str == null) return "";
+  return String(str)
+    // 上位サロゲートだけ／下位サロゲートだけ、の壊れ文字を除去
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "")
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
+}
+
 function esc(v) {
-  return String(v ?? "")
+  return safeUnicode(v)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
