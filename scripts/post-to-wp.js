@@ -117,14 +117,50 @@ async function upsertTerm(taxonomy, name) {
     return exact.id;
   }
 
-  const created = await wp(`/wp-json/wp/v2/${taxonomy}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ name: n }),
-  });
+  // ✅ ここだけ：term_exists を吸収して term_id を返す
+  try {
+    const created = await wp(`/wp-json/wp/v2/${taxonomy}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ name: n }),
+    });
 
-  termCache.set(key, created.id);
-  return created.id;
+    termCache.set(key, created.id);
+    return created.id;
+  } catch (err) {
+    const msg = String(err?.message || "");
+
+    // WP API error 400: {"code":"term_exists",...,"term_id":5}
+    if (msg.includes('"code":"term_exists"')) {
+      const jsonStart = msg.indexOf("{");
+      const jsonText = jsonStart >= 0 ? msg.slice(jsonStart) : "";
+
+      try {
+        const data = JSON.parse(jsonText);
+        const termId =
+          data?.data?.term_id ??
+          (Array.isArray(data?.additional_data) ? data.additional_data[0] : null);
+
+        if (termId) {
+          termCache.set(key, termId);
+          return termId;
+        }
+      } catch (_) {
+        // パース失敗 → 下で再検索
+      }
+
+      // 競合対策：最後にもう一回検索して拾う
+      const retry = await wp(`/wp-json/wp/v2/${taxonomy}?search=${encodeURIComponent(n)}&per_page=100`);
+      const exact2 = (retry || []).find(t => String(t.name).trim() === n);
+      if (exact2) {
+        termCache.set(key, exact2.id);
+        return exact2.id;
+      }
+    }
+
+    // term_exists 以外は従来通り落とす
+    throw err;
+  }
 }
 
 function splitCsv(v) {
